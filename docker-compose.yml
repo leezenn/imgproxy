@@ -1,0 +1,138 @@
+version: '3'
+
+networks:
+  proxy_net:
+    name: ${NETWORK_NAME:-proxy_net}
+    driver: bridge
+
+services:
+  nginx-proxy:
+    container_name: nginx-proxy
+    image: nginxproxy/nginx-proxy
+    # image: nginx:alpine
+    labels: # for acme-companion (fallback from acme env vars IDs)
+            # also better for dynamically named containers
+      com.github.nginx-proxy.nginx: "true"
+    networks:
+      - proxy_net
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - /var/run/docker.sock:/tmp/docker.sock:ro
+
+      - ./nginx/data/conf.d:/etc/nginx/conf.d
+      - ./nginx/data/vhost:/etc/nginx/vhost.d
+      - ./nginx/data/html:/usr/share/nginx/html
+      - ./nginx/data/certs:/etc/nginx/certs:ro
+      - ./nginx/cache:/var/cache/nginx:rw
+      # - ./auth/.htpasswd:/etc/nginx/.htpasswd:ro
+
+    environment:
+      DHPARAM_SKIP: false
+      SSL_POLICY: Mozilla-Intermediate
+      TRUST_DOWNSTREAM_PROXY: false # true if behind trusted proxy:
+      # https://github.com/nginx-proxy/nginx-proxy#trusting-downstream-proxy-headers
+    restart: always
+    healthcheck: # if nginx config is valid and nginx is running
+      test: ["CMD-SHELL", "nginx -t && ps -C nginx >/dev/null || exit 1"]
+      interval: 1m30s
+      timeout: 5s
+      retries: 3
+      start_period: 5m
+
+
+  acme-companion:
+    container_name: acme-companion
+    image: nginxproxy/acme-companion
+    restart: unless-stopped
+    depends_on:
+      # - docker-gen
+      - nginx-proxy
+    volumes_from:
+      - nginx-proxy
+    volumes:
+      # shared with nginx:
+      - ./nginx/data/conf.d:/etc/nginx/conf.d
+      - ./nginx/data/vhost:/etc/nginx/vhost.d
+      - ./nginx/data/html:/usr/share/nginx/html
+      - ./nginx/data/certs:/etc/nginx/certs:rw
+
+      - ./nginx/acme:/etc/acme.sh
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+    networks:
+      - proxy_net
+    environment:
+      NGINX_PROXY_CONTAINER: nginx-proxy
+      # For multisetup:
+      # NGINX_DOCKER_GEN_CONTAINER: docker-gen
+      DEFAULT_EMAIL: ${ACME_CERT_NOTIFICATION_EMAIL}
+
+      # Test letsencypt server:
+      # https://github.com/nginx-proxy/acme-companion/blob/main/docs/Container-configuration.md#optional-container-environment-variables-for-custom-configuration
+      ACME_CA_URI: https://acme-staging-v02.api.letsencrypt.org/directory
+      # DEBUG: 1
+
+    healthcheck: # if certs for virtual host available
+      test: ["CMD-SHELL", "ls /etc/nginx/certs/${VIRTUAL_HOST}* >/dev/null || exit 1"]
+      interval: 1m30s
+      timeout: 5s
+      retries: 3
+      start_period: 2m
+
+# ================================================== #
+
+  imgproxy:
+    container_name: imgproxy
+    image: darthsim/imgproxy:latest
+    networks:
+      - proxy_net
+    expose:
+      - 8080
+    # stdin_open: true
+    # tty: true
+
+    healthcheck:
+      test: [ "CMD", "imgproxy", "health" ]
+      timeout: 10s
+      interval: 10s
+      retries: 3
+
+    environment:
+      VIRTUAL_HOST: ${VIRTUAL_HOST}
+      VIRTUAL_PORT: 8080
+
+      LETSENCRYPT_HOST: ${VIRTUAL_HOST}
+      LETSENCRYPT_EMAIL: ${LETSENCRYPT_EMAIL}
+
+      # [https://docs.imgproxy.net/configuration/options]
+      # IMGPROXY_KEY: ${KEY}
+      # IMGPROXY_SALT: ${SALT}
+      # IMGPROXY_BIND: ${IMGPROXY_PORT}  # default: ":8080"
+      IMGPROXY_NETWORK: tcp
+      IMGPROXY_READ_TIMEOUT: 10
+      IMGPROXY_WRITE_TIMEOUT: 10
+      IMGPROXY_WORKERS: ${IMGPROXY_WORKERS}
+      IMGPROXY_REQUESTS_QUEUE_SIZE: 150
+
+      # IMGPROXY_SOURCE_URL_ENCRYPTION_KEY: ${URL_ENCRYPTION_KEY}
+
+      IMGPROXY_QUALITY: 100
+      IMGPROXY_JPEG_PROGRESSIVE: true
+      IMGPROXY_PNG_INTERLACED: true
+
+      IMGPROXY_PREFERRED_FORMATS: jpeg,png,gif  # default: jpeg,png,gif
+      # IMGPROXY_SKIP_PROCESSING_FORMATS:  # coma sep list
+
+      # IMGPROXY_FALLBACK_IMAGE_URL:
+
+      IMGPROXY_ENABLE_DEBUG_HEADERS: true
+
+      # [https://docs.imgproxy.net/monitoring/prometheus]
+      # IMGPROXY_PROMETHEUS_BIND:
+      # IMGPROXY_PROMETHEUS_NAMESPACE:
+
+      # Sentry
+      # IMGPROXY_SENTRY_DSN:
+      # IMGPROXY_SENTRY_ENVIRONMENT: # default: production
+      # IMGPROXY_SENTRY_RELEASE: # default: imgproxy@{imgproxy version}
