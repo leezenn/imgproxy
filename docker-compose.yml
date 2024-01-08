@@ -15,6 +15,8 @@ services:
       com.github.nginx-proxy.nginx: "true"
     networks:
       - proxy_net
+    dns:
+     - 1.1.1.1
     ports:
       - "80:80"
       - "443:443"
@@ -70,7 +72,7 @@ services:
 
       # Test letsencypt server:
       # https://github.com/nginx-proxy/acme-companion/blob/main/docs/Container-configuration.md#optional-container-environment-variables-for-custom-configuration
-      ACME_CA_URI: https://acme-staging-v02.api.letsencrypt.org/directory
+      # ACME_CA_URI: https://acme-staging-v02.api.letsencrypt.org/directory
       # DEBUG: 1
 
     healthcheck: # if certs for virtual host available
@@ -84,7 +86,7 @@ services:
 
   imgproxy:
     container_name: imgproxy
-    image: darthsim/imgproxy:latest
+    image: "docker.imgproxy.pro/imgproxy:v3.21.0-ml"
     networks:
       - proxy_net
     expose:
@@ -102,31 +104,40 @@ services:
       VIRTUAL_HOST: ${VIRTUAL_HOST}
       VIRTUAL_PORT: 8080
 
+      IMGPROXY_LICENSE_KEY: ${IMGPROXY_LICENSE_KEY}
+      IMGPROXY_SMART_CROP_ADVANCED: true
+      IMGPROXY_SMART_CROP_FACE_DETECTION: true
+
       LETSENCRYPT_HOST: ${VIRTUAL_HOST}
       LETSENCRYPT_EMAIL: ${LETSENCRYPT_EMAIL}
 
       # [https://docs.imgproxy.net/configuration/options]
-      # IMGPROXY_KEY: ${KEY}
-      # IMGPROXY_SALT: ${SALT}
+      IMGPROXY_KEY: ${IMGPROXY_KEY}
+      IMGPROXY_SALT: ${IMGPROXY_SALT}
+      # IMGPROXY_SIGNATURE_SIZE: 128
       # IMGPROXY_BIND: ${IMGPROXY_PORT}  # default: ":8080"
       IMGPROXY_NETWORK: tcp
       IMGPROXY_READ_TIMEOUT: 10
       IMGPROXY_WRITE_TIMEOUT: 10
       IMGPROXY_WORKERS: ${IMGPROXY_WORKERS}
-      IMGPROXY_REQUESTS_QUEUE_SIZE: 150
-
+      # IMGPROXY_REQUESTS_QUEUE_SIZE: 1000
+      IMGPROXY_MAX_SRC_RESOLUTION: 32
+      IMGPROXY_IGNORE_SSL_VERIFICATION: true
       # IMGPROXY_SOURCE_URL_ENCRYPTION_KEY: ${URL_ENCRYPTION_KEY}
 
-      IMGPROXY_QUALITY: 100
+      #IMGPROXY_QUALITY: 100
       IMGPROXY_JPEG_PROGRESSIVE: true
       IMGPROXY_PNG_INTERLACED: true
 
-      IMGPROXY_PREFERRED_FORMATS: jpeg,png,gif  # default: jpeg,png,gif
+      # IMGPROXY_PREFERRED_FORMATS: jpeg,png,gif  # default: jpeg,png,gif
       # IMGPROXY_SKIP_PROCESSING_FORMATS:  # coma sep list
 
       # IMGPROXY_FALLBACK_IMAGE_URL:
 
-      IMGPROXY_ENABLE_DEBUG_HEADERS: true
+      # IMGPROXY_ENABLE_DEBUG_HEADERS: true
+
+      IMGPROXY_ENABLE_WEBP_DETECTION: false
+      IMGPROXY_ENABLE_AVIF_DETECTION: false
 
       # [https://docs.imgproxy.net/monitoring/prometheus]
       # IMGPROXY_PROMETHEUS_BIND:
