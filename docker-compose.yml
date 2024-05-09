@@ -86,7 +86,8 @@ services:
 
   imgproxy:
     container_name: imgproxy
-    image: "docker.imgproxy.pro/imgproxy:v3.21.0-ml"
+    # image: "docker.imgproxy.pro/imgproxy:v3.21.0-ml"
+    image: "imgproxy:latest"
     networks:
       - proxy_net
     expose:
@@ -118,6 +119,10 @@ services:
 
       LETSENCRYPT_HOST: ${VIRTUAL_HOST}
       LETSENCRYPT_EMAIL: ${LETSENCRYPT_EMAIL}
+
+      IMGPROXY_PROXY_USERNAME: ${IMGPROXY_PROXY_USERNAME}
+      IMGPROXY_PROXY_PASSWORD: ${IMGPROXY_PROXY_PASSWORD}
+      IMGPROXY_PROXY_HOST: ${IMGPROXY_PROXY_HOST} 
 
       # [https://docs.imgproxy.net/configuration/options]
       IMGPROXY_KEY: ${IMGPROXY_KEY}

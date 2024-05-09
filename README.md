@@ -23,3 +23,22 @@ docker compose up -d
 ```
 
 ---
+### Proxy rota:
+- clone repo:
+```sh
+git clone https://github.com/leezenn/imgforkxy.git
+```
+
+- build the image:
+```sh
+cd imgforkxy
+./docker_build.sh
+```
+
+- specify creds at `.env`.
+>[!NOTE]
+>Proxied via HTTP, port `:80`
+>It will use regular downloader if any of the cred is missing.  
+> If you have no need in proxy: Official image is commented out in `docker-compose.yml`
+
+---
