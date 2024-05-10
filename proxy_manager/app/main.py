@@ -45,40 +45,32 @@ async def root():
 
 @app.get("/fetch-image/")
 async def fetch_image(url: str):
-    timeout = httpx.Timeout(10.0, connect=5.0)
-    client = httpx.AsyncClient(timeout=timeout)
-    try:
-        # Make the initial request to fetch the image
-        response = await client.get(url)
-        response.raise_for_status()
-        return StreamingResponse(
-            response.iter_content(), media_type=response.headers.get("Content-Type")
-        )
-    except (httpx.RequestError, httpx.HTTPStatusError) as e:
-        if proxy:
-            try:
-                # If the direct request fails, try via the configured proxy
-                proxy_response = await client.get(
-                    url, proxies={"http://": proxy, "https://": proxy}
-                )
-                proxy_response.raise_for_status()
-                return StreamingResponse(
-                    proxy_response.iter_content(),
-                    media_type=proxy_response.headers.get("Content-Type"),
-                )
-            except (httpx.RequestError, httpx.HTTPStatusError):
-                logger.error("Failed to fetch image via direct and proxy methods.")
-                raise HTTPException(
-                    status_code=502,
-                    detail="Failed to fetch image via direct and proxy methods.",
-                )
-        else:
-            logger.error(f"Failed to fetch image directly: {str(e)}")
+    async with httpx.AsyncClient() as client:
+        try:
+            req = client.build_request("GET", url)
+            r = await client.send(req, stream=True)
+            return StreamingResponse(
+                r.aiter_raw(), media_type=r.headers.get("Content-Type")
+            )
+        except httpx.HTTPError as e:
+            if proxy:
+                try:
+                    proxy_req = client.build_request(
+                        "GET", url, proxies={"http://": proxy, "https://": proxy}
+                    )
+                    proxy_r = await client.send(proxy_req, stream=True)
+                    return StreamingResponse(
+                        proxy_r.aiter_raw(),
+                        media_type=proxy_r.headers.get("Content-Type"),
+                    )
+                except httpx.HTTPError:
+                    raise HTTPException(
+                        status_code=502,
+                        detail="Failed to fetch image via proxy methods.",
+                    )
             raise HTTPException(
                 status_code=502, detail="Failed to fetch image directly."
             )
-    finally:
-        await client.aclose()
 
 
 @app.middleware("http")
