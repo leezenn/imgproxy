@@ -1,11 +1,10 @@
 import logging
-from fastapi import FastAPI, HTTPException, Response
+from fastapi import FastAPI, HTTPException
 from fastapi.requests import Request
 import httpx
 from os import getenv
 import base64
-import mimetypes
-
+from starlette.responses import StreamingResponse
 
 
 logging.basicConfig(level=logging.INFO)
@@ -48,33 +47,36 @@ async def root():
 async def fetch_image(url: str):
     timeout = httpx.Timeout(10.0, connect=5.0)
     client = httpx.AsyncClient(timeout=timeout)
-
     try:
+        # Make the initial request to fetch the image
         response = await client.get(url)
         response.raise_for_status()
-        content_type, _ = mimetypes.guess_type(url)
-        return Response(
-            content=response.content,
-            media_type=content_type or "application/octet-stream",
+        return StreamingResponse(
+            response.iter_content(), media_type=response.headers.get("Content-Type")
         )
     except (httpx.RequestError, httpx.HTTPStatusError) as e:
         if proxy:
             try:
+                # If the direct request fails, try via the configured proxy
                 proxy_response = await client.get(
                     url, proxies={"http://": proxy, "https://": proxy}
                 )
                 proxy_response.raise_for_status()
-                return Response(
-                    content=proxy_response.content,
-                    media_type=content_type or "application/octet-stream",
+                return StreamingResponse(
+                    proxy_response.iter_content(),
+                    media_type=proxy_response.headers.get("Content-Type"),
                 )
             except (httpx.RequestError, httpx.HTTPStatusError):
+                logger.error("Failed to fetch image via direct and proxy methods.")
                 raise HTTPException(
                     status_code=502,
                     detail="Failed to fetch image via direct and proxy methods.",
                 )
         else:
-            raise HTTPException(status_code=502, detail=str(e))
+            logger.error(f"Failed to fetch image directly: {str(e)}")
+            raise HTTPException(
+                status_code=502, detail="Failed to fetch image directly."
+            )
     finally:
         await client.aclose()
 
