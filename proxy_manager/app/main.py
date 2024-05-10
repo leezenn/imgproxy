@@ -3,7 +3,6 @@ from fastapi import FastAPI, HTTPException
 from fastapi.requests import Request
 import httpx
 from os import getenv
-import base64
 from starlette.responses import StreamingResponse
 
 
@@ -15,23 +14,29 @@ username = getenv("IMGPROXY_PROXY_USERNAME")
 password = getenv("IMGPROXY_PROXY_PASSWORD")
 host = getenv("IMGPROXY_PROXY_HOST")
 port = getenv("IMGPROXY_PROXY_PORT")
-protocol = getenv("IMGPROXY_PROXY_PROTOCOL", "http")
+
+allowed_headers = [
+    "content-type",
+    "content-length",
+    "content-encoding",
+    "etag",
+    "cache-control",
+]
 
 
-def proxy_url():
+def get_proxy_config():
     if not all([username, password, host, port]):
         logger.warning(
             "Proxy configuration is incomplete. Direct requests will be used."
         )
         return None
-    else:
-        creds_encoded = base64.b64encode(f"{username}:{password}".encode()).decode(
-            "utf-8"
-        )
-        return f"{protocol}://{creds_encoded}@{host}:{port}"
+    return {
+        "http": f"http://{username}:{password}@{host}:{port}",
+        "https": f"https://{username}:{password}@{host}:{port}",
+    }
 
 
-proxy = proxy_url()
+proxy = get_proxy_config()
 
 app = FastAPI()
 
@@ -45,32 +50,23 @@ async def root():
 
 @app.get("/fetch-image/")
 async def fetch_image(url: str):
-    async with httpx.AsyncClient() as client:
+    async with httpx.AsyncClient(proxies=proxy if proxy else None) as client:
         try:
-            req = client.build_request("GET", url)
-            r = await client.send(req, stream=True)
+            response = await client.get(url, stream=True)
+            response.raise_for_status()
+            response_headers = {
+                key: value
+                for key, value in response.headers.items()
+                if key.lower() in allowed_headers
+            }
             return StreamingResponse(
-                r.aiter_raw(), media_type=r.headers.get("Content-Type")
+                response.aiter_raw(),
+                media_type=response.headers.get("Content-Type"),
+                headers=response_headers,
             )
         except httpx.HTTPError as e:
-            if proxy:
-                try:
-                    proxy_req = client.build_request(
-                        "GET", url, proxies={"http://": proxy, "https://": proxy}
-                    )
-                    proxy_r = await client.send(proxy_req, stream=True)
-                    return StreamingResponse(
-                        proxy_r.aiter_raw(),
-                        media_type=proxy_r.headers.get("Content-Type"),
-                    )
-                except httpx.HTTPError:
-                    raise HTTPException(
-                        status_code=502,
-                        detail="Failed to fetch image via proxy methods.",
-                    )
-            raise HTTPException(
-                status_code=502, detail="Failed to fetch image directly."
-            )
+            logger.error(f"Failed to fetch image: {str(e)}")
+            raise HTTPException(status_code=502, detail="Failed to fetch image.")
 
 
 @app.middleware("http")
