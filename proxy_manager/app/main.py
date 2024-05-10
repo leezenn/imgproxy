@@ -1,9 +1,12 @@
 import logging
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, HTTPException, Response
 from fastapi.requests import Request
 import httpx
 from os import getenv
 import base64
+import mimetypes
+
+
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
@@ -49,13 +52,22 @@ async def fetch_image(url: str):
     try:
         response = await client.get(url)
         response.raise_for_status()
-        return response.content
+        content_type, _ = mimetypes.guess_type(url)
+        return Response(
+            content=response.content,
+            media_type=content_type or "application/octet-stream",
+        )
     except (httpx.RequestError, httpx.HTTPStatusError) as e:
         if proxy:
             try:
-                proxy_response = await client.get(url, proxies={"all://": proxy})
+                proxy_response = await client.get(
+                    url, proxies={"http://": proxy, "https://": proxy}
+                )
                 proxy_response.raise_for_status()
-                return proxy_response.content
+                return Response(
+                    content=proxy_response.content,
+                    media_type=content_type or "application/octet-stream",
+                )
             except (httpx.RequestError, httpx.HTTPStatusError):
                 raise HTTPException(
                     status_code=502,
