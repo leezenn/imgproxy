@@ -154,7 +154,7 @@ services:
       # IMGPROXY_PROMETHEUS_NAMESPACE:
 
       # Sentry
-      # IMGPROXY_SENTRY_DSN:
+      IMGPROXY_SENTRY_DSN: ${IMGPROXY_SENTRY_DSN}
       # IMGPROXY_SENTRY_ENVIRONMENT: # default: production
       # IMGPROXY_SENTRY_RELEASE: # default: imgproxy@{imgproxy version}
 
