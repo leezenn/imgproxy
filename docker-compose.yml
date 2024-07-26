@@ -108,7 +108,7 @@ services:
             max-file: "4"
 
     environment:
-      IMGPROXY_BASE_URL: "http://proxy-manager:8000/fetch-image?url="
+      # IMGPROXY_BASE_URL: "http://proxy-manager:8000/fetch-image?url="
 
       VIRTUAL_HOST: ${VIRTUAL_HOST}
       VIRTUAL_PORT: 8080
