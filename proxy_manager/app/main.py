@@ -25,6 +25,7 @@ def get_proxy_config():
         return None
     return {
         "http://": f"http://{username}:{password}@{host}:{port}",
+        "https://": f"https://{username}:{password}@{host}:{port}",
     }
 
 
