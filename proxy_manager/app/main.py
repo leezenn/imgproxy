@@ -9,19 +9,12 @@ from starlette.responses import StreamingResponse
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
+timeout_config = httpx.Timeout(connect=20.0, read=30.0, write=20.0, pool=60.0)
 
 username = getenv("IMGPROXY_PROXY_USERNAME")
 password = getenv("IMGPROXY_PROXY_PASSWORD")
 host = getenv("IMGPROXY_PROXY_HOST")
 port = getenv("IMGPROXY_PROXY_PORT")
-
-allowed_headers = [
-    "content-type",
-    "content-length",
-    "content-encoding",
-    "etag",
-    "cache-control",
-]
 
 
 def get_proxy_config():
@@ -31,8 +24,7 @@ def get_proxy_config():
         )
         return None
     return {
-        "http": f"http://{username}:{password}@{host}:{port}",
-        "https": f"https://{username}:{password}@{host}:{port}",
+        "http://": f"http://{username}:{password}@{host}:{port}",
     }
 
 
@@ -50,23 +42,39 @@ async def root():
 
 @app.get("/fetch-image/")
 async def fetch_image(url: str):
-    async with httpx.AsyncClient(proxies=proxy if proxy else None) as client:
+    async with httpx.AsyncClient(timeout=timeout_config) as client:
         try:
-            response = await client.get(url, stream=True)
+            request = client.build_request("GET", url)
+            response = await client.send(request, stream=True)
             response.raise_for_status()
-            response_headers = {
-                key: value
-                for key, value in response.headers.items()
-                if key.lower() in allowed_headers
-            }
             return StreamingResponse(
                 response.aiter_raw(),
                 media_type=response.headers.get("Content-Type"),
-                headers=response_headers,
+                headers=dict(response.headers),
             )
-        except httpx.HTTPError as e:
-            logger.error(f"Failed to fetch image: {str(e)}")
-            raise HTTPException(status_code=502, detail="Failed to fetch image.")
+        except httpx.HTTPError:
+            if proxy:
+                try:
+                    async with httpx.AsyncClient(
+                        proxies=proxy, timeout=timeout_config
+                    ) as client:
+                        request = client.build_request("GET", url)
+                        response = await client.send(request, stream=True)
+                        response.raise_for_status()
+                        return StreamingResponse(
+                            response.aiter_raw(),
+                            media_type=response.headers.get("Content-Type"),
+                            headers=dict(response.headers),
+                        )
+                except httpx.HTTPError as e:
+                    raise HTTPException(
+                        status_code=502,
+                        detail=f"Failed to fetch image via proxy: {str(e)}",
+                    )
+            raise HTTPException(
+                status_code=502,
+                detail="Failed to fetch image directly and no proxy available.",
+            )
 
 
 @app.middleware("http")
